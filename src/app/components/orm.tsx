@@ -11,8 +11,9 @@ import ReactFlow, {
   useEdgesState,
   MarkerType,
   Edge,
-  Connection,
+  EdgeProps,
   ReactFlowProvider,
+  Node,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import dagre from "dagre";
@@ -116,20 +117,15 @@ const ModelNode = ({ data }: { data: NodeData }) => {
 // Custom edge component for better relationship visualization
 const RelationshipEdge = ({
   id,
-  source,
-  target,
   sourceX,
   sourceY,
   targetX,
   targetY,
-  sourcePosition,
-  targetPosition,
-  style = {},
   data,
   markerEnd,
   markerStart,
   label,
-}: any) => {
+}: EdgeProps) => {
   const [edgePath, setEdgePath] = useState("");
   const [labelX, setLabelX] = useState(0);
   const [labelY, setLabelY] = useState(0);
@@ -287,7 +283,7 @@ dagreGraph.setDefaultEdgeLabel(() => ({}));
 const nodeWidth = 240;
 const nodeHeight = 200;
 
-const getLayoutedElements = (nodes: any[], edges: Edge[]) => {
+const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
   dagreGraph.setGraph({ rankdir: "TB", ranksep: 150, nodesep: 80 });
 
   nodes.forEach((node) => {

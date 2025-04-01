@@ -40,7 +40,6 @@
 
 // export default App;
 
-import react from "react";
 import Graph from "./components/graph";
 const App = () => {
   return (
