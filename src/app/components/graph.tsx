@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 
 // Define types for our data
-interface Node extends d3.SimulationNodeDatum {
+export interface Node extends d3.SimulationNodeDatum {
   id: number;
   name: string;
   category: string;
@@ -14,18 +14,19 @@ interface Node extends d3.SimulationNodeDatum {
   dependencies?: string[];
 }
 
-interface Link {
-  source: number;
-  target: number;
+export interface Link {
+  source: number | Node;
+  target: number | Node;
   relation: string;
   strength?: number;
 }
 
-interface GraphData {
+export interface GraphData {
   nodes: Node[];
   links: Link[];
 }
 
+// Utility functions for node lookup
 const getNodeId = (node: number | Node): number =>
   typeof node === "object" ? node.id : node;
 
@@ -36,7 +37,16 @@ const getNodeById = (data: Node[], node: number | Node): Node | undefined => {
   return node;
 };
 
-const ObsidianGraph = (graphData: GraphData) => {
+interface ObsidianGraphProps {
+  // Pass the GitHub URL (e.g., "username/repo") as a prop
+  githubUrl: string;
+}
+
+const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
+  // State variables
+  const [graphData, setGraphData] = useState<GraphData | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [selectedFile, setSelectedFile] = useState<Node | null>(null);
   const [connectedNodes, setConnectedNodes] = useState<Node[]>([]);
@@ -55,54 +65,81 @@ const ObsidianGraph = (graphData: GraphData) => {
     loading: true,
     error: true,
   });
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
-  // Reference for the D3 SVG
-  const svgRef = useRef<SVGSVGElement | null>(null);
+  // Fetch graph data from API using the provided GitHub URL
+  useEffect(() => {
+    const fetchGraphData = async () => {
+      try {
+        // Construct the full GitHub URL
+        const fullUrl = `https://github.com/${githubUrl}`;
+        const response = await fetch(
+          "https://762e-128-185-112-57.ngrok-free.app/receive",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "text/plain",
+              Accept: "application/json",
+            },
+            body: `github_link=${fullUrl}`,
+          }
+        );
 
-  // Filter nodes based on category and search term
+        if (!response.ok) {
+          throw new Error("Failed to fetch graph data");
+        }
+
+        const data: GraphData = await response.json();
+        // Add random colors to each node
+        data.nodes = data.nodes.map((node) => ({
+          ...node,
+          color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
+        }));
+        setGraphData(data);
+        setLoading(false);
+      } catch (err) {
+        console.error("Failed to fetch graph data:", err);
+        setError(
+          err instanceof Error ? err.message : "An unknown error occurred"
+        );
+        setLoading(false);
+      }
+    };
+
+    fetchGraphData();
+  }, [githubUrl]);
+
   // Filter nodes based on category and search term
   const getFilteredNodes = (): Node[] => {
-    // First ensure graphData and nodes exist
     if (!graphData || !graphData.nodes || !Array.isArray(graphData.nodes)) {
       return [];
     }
 
     return graphData.nodes.filter((node) => {
-      // Check if node and node.category exist
       if (!node || !node.category) return false;
-
-      // Check category filter
       const passesCategory = categoryFilters[node.category] ?? true;
-
-      // Check search term
       const passesSearch =
         searchTerm === "" ||
         (node.name &&
           node.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (node.path &&
           node.path.toLowerCase().includes(searchTerm.toLowerCase()));
-
       return passesCategory && passesSearch;
     });
   };
 
-  // Get filtered links based on visible nodes
+  // Filter links based on visible nodes
   const getFilteredLinks = (): Link[] => {
-    // First ensure graphData and links exist
     if (!graphData || !graphData.links || !Array.isArray(graphData.links)) {
       return [];
     }
-
     const filteredNodes = getFilteredNodes();
     const nodeIds = new Set(filteredNodes.map((node) => node.id));
 
     return graphData.links.filter((link) => {
-      // Check if link and its source/target exist
       if (!link || link.source === undefined || link.target === undefined) {
         return false;
       }
-
       const sourceId = getNodeId(link.source);
       const targetId = getNodeId(link.target);
       return nodeIds.has(sourceId) && nodeIds.has(targetId);
@@ -111,7 +148,7 @@ const ObsidianGraph = (graphData: GraphData) => {
 
   // Find connected nodes when a node is selected
   useEffect(() => {
-    if (!selectedNode) {
+    if (!selectedNode || !graphData) {
       setConnectedNodes([]);
       return;
     }
@@ -133,9 +170,11 @@ const ObsidianGraph = (graphData: GraphData) => {
     setConnectedNodes(connected);
   }, [selectedNode, graphData, categoryFilters, searchTerm]);
 
-  // ---- D3 Rendering ----
+  // D3 rendering
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
   useEffect(() => {
-    if (!svgRef.current) return;
+    if (!svgRef.current || !graphData) return;
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove(); // Clear previous rendering
@@ -149,7 +188,7 @@ const ObsidianGraph = (graphData: GraphData) => {
       .attr("height", height)
       .style("background", "#1e1e2e");
 
-    // Add zoom
+    // Add zoom functionality
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 4])
@@ -158,8 +197,6 @@ const ObsidianGraph = (graphData: GraphData) => {
       });
 
     svg.call(zoom);
-
-    // Initial zoom to fit the graph
     svg.call(
       zoom.transform,
       d3.zoomIdentity.translate(width / 2, height / 2).scale(0.8)
@@ -168,7 +205,7 @@ const ObsidianGraph = (graphData: GraphData) => {
     const filteredNodes = getFilteredNodes();
     const filteredLinks = getFilteredLinks();
 
-    // Create a simulation with nodes and links
+    // Create force simulation
     const simulation = d3
       .forceSimulation<Node>(filteredNodes)
       .force("charge", d3.forceManyBody<Node>().strength(-300))
@@ -181,7 +218,6 @@ const ObsidianGraph = (graphData: GraphData) => {
           .distance((link) => {
             const sourceId = getNodeId(link.source);
             const targetId = getNodeId(link.target);
-            // Retrieve actual node objects to check categories
             const sourceNode = graphData.nodes.find((n) => n.id === sourceId);
             const targetNode = graphData.nodes.find((n) => n.id === targetId);
 
@@ -237,7 +273,7 @@ const ObsidianGraph = (graphData: GraphData) => {
     const node = container
       .append("g")
       .attr("class", "nodes")
-      .selectAll<SVGGElement, Node>(".node")
+      .selectAll<SVGGElement, Node>("g.node")
       .data(filteredNodes)
       .enter()
       .append("g")
@@ -279,7 +315,8 @@ const ObsidianGraph = (graphData: GraphData) => {
       .attr("dy", ".35em")
       .text((d) => {
         if (d.path && d.path !== "/") {
-          return `${d.path}${d.name}`;
+          const parts = `${d.path}${d.name}`.split("/");
+          return parts[parts.length - 1];
         }
         return d.name;
       })
@@ -357,7 +394,7 @@ const ObsidianGraph = (graphData: GraphData) => {
     };
   }, [graphData, selectedNode, connectedNodes, categoryFilters, searchTerm]);
 
-  // Implement drag behavior with correct type
+  // Drag behavior for nodes
   function drag(simulation: d3.Simulation<Node, Link>) {
     return d3
       .drag<SVGGElement, Node>()
@@ -411,25 +448,42 @@ const ObsidianGraph = (graphData: GraphData) => {
     setSelectedFile(node);
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen text-white">
+        Loading graph data...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-screen text-red-500">
+        Error: {error}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen bg-[#1e1e2e] text-gray-200">
       {/* Header */}
       <header className="p-4 bg-gray-900 w-full">
         <div className="flex flex-col md:flex-row justify-between items-center mt-2 gap-3">
           <div className="flex flex-wrap gap-2">
-            {Array.from(
-              new Set(graphData.nodes.map((node) => node.category))
-            ).map((category) => (
-              <button
-                key={category}
-                onClick={() => toggleCategoryFilter(category)}
-                className={`px-3 py-1 rounded text-xs ${getCategoryColor(
-                  category
-                )}`}
-              >
-                {category.charAt(0).toUpperCase() + category.slice(1)}
-              </button>
-            ))}
+            {graphData &&
+              Array.from(
+                new Set(graphData.nodes.map((node) => node.category))
+              ).map((category) => (
+                <button
+                  key={category}
+                  onClick={() => toggleCategoryFilter(category)}
+                  className={`px-3 py-1 rounded text-xs ${getCategoryColor(
+                    category
+                  )}`}
+                >
+                  {category.charAt(0).toUpperCase() + category.slice(1)}
+                </button>
+              ))}
           </div>
           <div className="relative w-full md:w-64">
             <input
@@ -453,7 +507,7 @@ const ObsidianGraph = (graphData: GraphData) => {
 
       <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
         {/* File System Panel */}
-        <div className="md:w-1/4 w-full bg-gray-800 border-r border-gray-700 overflow-y-auto p-4">
+        <div className="md:w-1/4 w-full bg-gray-800 border-r border-gray-700 overflow-y-auto custom-scrollbar p-4">
           <h2 className="font-semibold mb-4">Project Files</h2>
           {selectedNode ? (
             <>
@@ -487,7 +541,7 @@ const ObsidianGraph = (graphData: GraphData) => {
         </div>
 
         {/* Code Explanation Panel */}
-        <div className="md:w-1/3 w-full bg-gray-900 border-r border-gray-700 overflow-y-auto p-4">
+        <div className="md:w-1/3 w-full bg-gray-900 border-r border-gray-700 overflow-y-auto custom-scrollbar p-4">
           {selectedFile ? (
             <>
               <div className="flex justify-between items-center mb-4">

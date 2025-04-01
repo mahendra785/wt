@@ -1,7 +1,15 @@
+"use client";
+import { useState } from "react";
 import Image from "next/image";
 //import ObsidianGraph from "./graph";
 import DummyGraph from "./dummgraph";
-const Landing = () => {
+interface LandingProps {
+  githubUrl: string;
+  setGithubUrl: (url: string) => void;
+}
+
+const Landing: React.FC<LandingProps> = ({ setGithubUrl }) => {
+  const [value, setValue] = useState<string>("");
   return (
     <div className="h-screen w-screen bg-black">
       <div className="h-full flex flex-col justify-between">
@@ -30,6 +38,8 @@ const Landing = () => {
                 />
                 <input
                   type="text"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
                   placeholder="Enter GitHub Repo URL"
                   className="absolute inset-0 text-lg rounded-lg pl-18 w-[440px] focus:outline-none"
                 />
@@ -41,6 +51,10 @@ const Landing = () => {
               width={100}
               height={50}
               className="w-[200px] h-[100px] ml-4 cursor-pointer scale-[1.4]"
+              onClick={() => {
+                setGithubUrl(value);
+                setValue("");
+              }}
             />
           </div>
         </div>

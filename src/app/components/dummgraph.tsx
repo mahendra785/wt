@@ -9,9 +9,9 @@ interface Node extends d3.SimulationNodeDatum {
   category: string;
 }
 
-interface Link extends d3.SimulationLinkDatum<Node> {
-  source: Node | number;
-  target: Node | number;
+interface Link {
+  source: number;
+  target: number;
 }
 
 const DummyGraph = () => {
@@ -87,10 +87,10 @@ const DummyGraph = () => {
 
     const ticked = () => {
       link
-        .attr("x1", (d) => (d.source as Node).x ?? 0)
-        .attr("y1", (d) => (d.source as Node).y ?? 0)
-        .attr("x2", (d) => (d.target as Node).x ?? 0)
-        .attr("y2", (d) => (d.target as Node).y ?? 0);
+        .attr("x1", (d) => (d.source as unknown as Node).x ?? 0)
+        .attr("y1", (d) => (d.source as unknown as Node).y ?? 0)
+        .attr("x2", (d) => (d.target as unknown as Node).x ?? 0)
+        .attr("y2", (d) => (d.target as unknown as Node).y ?? 0);
 
       node.attr("cx", (d) => d.x ?? 0).attr("cy", (d) => d.y ?? 0);
     };
