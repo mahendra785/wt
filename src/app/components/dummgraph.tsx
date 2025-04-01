@@ -3,11 +3,24 @@
 import { useEffect, useRef } from "react";
 import * as d3 from "d3";
 
+interface Node extends d3.SimulationNodeDatum {
+  id: number;
+  name: string;
+  category: string;
+}
+
+interface Link extends d3.SimulationLinkDatum<Node> {
+  source: Node | number;
+  target: Node | number;
+}
+
 const DummyGraph = () => {
-  const svgRef = useRef(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
-    const nodes = Array.from({ length: 50 }, (_, i) => ({
+    if (!svgRef.current) return;
+
+    const nodes: Node[] = Array.from({ length: 50 }, (_, i) => ({
       id: i,
       name: `Node ${i + 1}`,
       x: Math.random() * 800,
@@ -15,7 +28,7 @@ const DummyGraph = () => {
       category: "default",
     }));
 
-    const links = Array.from({ length: 60 }, () => ({
+    const links: Link[] = Array.from({ length: 60 }, () => ({
       source: Math.floor(Math.random() * 30),
       target: Math.floor(Math.random() * 30),
     }));
@@ -35,7 +48,7 @@ const DummyGraph = () => {
       .force(
         "link",
         d3
-          .forceLink(links)
+          .forceLink<Node, Link>(links)
           .id((d) => d.id)
           .distance(100)
       )
@@ -63,35 +76,48 @@ const DummyGraph = () => {
       .attr("stroke", "#1e1e2e")
       .attr("stroke-width", 2)
       .call(
-        d3.drag().on("start", dragStart).on("drag", dragged).on("end", dragEnd)
+        d3
+          .drag<SVGCircleElement, Node>()
+          .on("start", dragStart)
+          .on("drag", dragged)
+          .on("end", dragEnd)
       );
 
     node.append("title").text((d) => d.name);
 
     const ticked = () => {
       link
-        .attr("x1", (d) => d.source.x)
-        .attr("y1", (d) => d.source.y)
-        .attr("x2", (d) => d.target.x)
-        .attr("y2", (d) => d.target.y);
+        .attr("x1", (d) => (d.source as Node).x ?? 0)
+        .attr("y1", (d) => (d.source as Node).y ?? 0)
+        .attr("x2", (d) => (d.target as Node).x ?? 0)
+        .attr("y2", (d) => (d.target as Node).y ?? 0);
 
-      node.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
+      node.attr("cx", (d) => d.x ?? 0).attr("cy", (d) => d.y ?? 0);
     };
 
     simulation.on("tick", ticked);
 
-    function dragStart(event, d) {
+    function dragStart(
+      event: d3.D3DragEvent<SVGCircleElement, Node, Node>,
+      d: Node
+    ) {
       if (!event.active) simulation.alphaTarget(0.3).restart();
-      d.fx = d.x;
-      d.fy = d.y;
+      d.fx = d.x ?? null;
+      d.fy = d.y ?? null;
     }
 
-    function dragged(event, d) {
+    function dragged(
+      event: d3.D3DragEvent<SVGCircleElement, Node, Node>,
+      d: Node
+    ) {
       d.fx = event.x;
       d.fy = event.y;
     }
 
-    function dragEnd(event, d) {
+    function dragEnd(
+      event: d3.D3DragEvent<SVGCircleElement, Node, Node>,
+      d: Node
+    ) {
       if (!event.active) simulation.alphaTarget(0);
       d.fx = null;
       d.fy = null;

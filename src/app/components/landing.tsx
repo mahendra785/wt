@@ -1,5 +1,5 @@
 import Image from "next/image";
-import ObsidianGraph from "./graph";
+//import ObsidianGraph from "./graph";
 import DummyGraph from "./dummgraph";
 const Landing = () => {
   return (

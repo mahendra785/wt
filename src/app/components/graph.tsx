@@ -37,9 +37,6 @@ const getNodeById = (data: Node[], node: number | Node): Node | undefined => {
 };
 
 const ObsidianGraph = (graphData: GraphData) => {
-  const [initialResponse, setInitialResponse] = useState<GraphData | null>(
-    null
-  );
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [selectedFile, setSelectedFile] = useState<Node | null>(null);
   const [connectedNodes, setConnectedNodes] = useState<Node[]>([]);
@@ -418,9 +415,6 @@ const ObsidianGraph = (graphData: GraphData) => {
     <div className="flex flex-col h-screen bg-[#1e1e2e] text-gray-200">
       {/* Header */}
       <header className="p-4 bg-gray-900 w-full">
-        <h1 className="text-2xl font-bold text-white">
-          Next.js Project Structure Explorer
-        </h1>
         <div className="flex flex-col md:flex-row justify-between items-center mt-2 gap-3">
           <div className="flex flex-wrap gap-2">
             {Array.from(
