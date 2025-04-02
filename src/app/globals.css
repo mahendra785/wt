@@ -44,5 +44,5 @@ body {
 /* For Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(100, 100, 100, 0.5) transparent;
+  scrollbar-color: #CE8F6F transparent;
 }

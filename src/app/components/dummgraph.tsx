@@ -20,7 +20,7 @@ const DummyGraph = () => {
   useEffect(() => {
     if (!svgRef.current) return;
 
-    const width = 1000;
+    const width = 1900;
     const height = 700;
 
     // Helper function to generate a random point inside an ellipse

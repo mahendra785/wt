@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
-import Editor from "react-simple-code-editor";
-import { Highlight as PrismHighlight } from "prism-react-renderer";
-import { themes } from "prism-react-renderer";
+import { CopyBlock, dracula } from "react-code-blocks";
+import LoadingScreen from "./loader";
 
 // ------------------------------
 // Type Definitions
@@ -78,35 +77,6 @@ const getNodeById = (data: Node[], node: number | Node): Node | undefined => {
     return data.find((n) => n.id === node);
   }
   return node;
-};
-
-// Helper to trim a file name based on its path
-const trimFileName = (name: string, path?: string): string => {
-  if (path) {
-    const trimmed = path.split("/").pop();
-    return trimmed ? trimmed : name;
-  }
-  return name;
-};
-
-// ------------------------------
-// Minimalistic UI Colors Function
-// ------------------------------
-const getCategoryColor = (category: string, active: boolean): string => {
-  const colorMap: { [key: string]: string } = {
-    page: "bg-blue-500",
-    layout: "bg-blue-600",
-    component: "bg-green-500",
-    api: "bg-orange-500",
-    hook: "bg-purple-500",
-    util: "bg-red-500",
-    config: "bg-gray-500",
-    styles: "bg-pink-500",
-    types: "bg-yellow-500",
-    loading: "bg-indigo-500",
-    error: "bg-red-600",
-  };
-  return active ? colorMap[category] || "bg-gray-400" : "bg-gray-700";
 };
 
 // ------------------------------
@@ -196,7 +166,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
       try {
         const fullUrl = `${githubUrl}`;
         const response = await fetch(
-          "https://4196-128-185-112-57.ngrok-free.app/receive",
+          "https://b8a2-182-66-218-119.ngrok-free.app/receive",
           {
             method: "POST",
             headers: {
@@ -249,14 +219,14 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
     const fetchJSAnalysis = async () => {
       try {
         const response = await fetch(
-          "https://4196-128-185-112-57.ngrok-free.app/analysis",
+          "https://b8a2-182-66-218-119.ngrok-free.app/analysis",
           {
             method: "POST",
             headers: {
               "Content-Type": "text/plain",
               Accept: "application/json",
             },
-            body: `repo_name=vitty`,
+            body: `repo_name=${githubUrl.split("/").pop()}`,
           }
         );
         if (!response.ok) {
@@ -286,7 +256,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
               used_in_files?: string[];
             }[];
           }) => ({
-            file: report.file, // file is expected to be the full path or unique identifier
+            file: report.file,
             functions: report.functions
               ? report.functions.map((func) => ({
                   name: func.name,
@@ -313,12 +283,11 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
         setAnalysis(transformed);
       } catch (err) {
         console.error("Failed to fetch JS analysis report:", err);
-        // Optionally set an error state here
       }
     };
 
     fetchJSAnalysis();
-  }, []);
+  }, [githubUrl]);
 
   // ------------------------------
   // Filter Functions
@@ -637,11 +606,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
   // UI Rendering
   // ------------------------------
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen text-gray-300 font-sans">
-        Loading graph data...
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   if (error) {
@@ -675,15 +640,13 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                   onClick={() => toggleCategoryFilter(category)}
                   className={` flex justify-start items-center rounded text-lg font-['Space_Grotesk'] text-[#CE8F6F] transition-colors duration-200 text-left`}
                 >
-                  <img src="/file1.svg" className="w-10 h-10"></img>
+                  <img src="/file1.svg" className="w-10 h-10" alt="file icon" />
                   <> {category.charAt(0).toUpperCase() + category.slice(1)}</>
                 </button>
               ))}
           </div>
           {/* Header Section */}
-          {/* File System Header Section */}
           <div className="relative pb-4 ">
-            {/* Title Bar with 'Import Docs' Button */}
             <div className="flex items-center justify-between bg-[#CE8F6F] px-3 py-2 rounded-md">
               <h1 className="text-xl font-bold text-black">Project Files</h1>
               <button className="px-3 py-1 text-xs font-medium rounded border border-gray-600 text-black hover:bg-[#D97757]">
@@ -692,13 +655,11 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
             </div>
           </div>
 
-          {/* If a node is selected, show the tree branch leading to it */}
+          {/* Selected Node Details */}
           <div className="space-y-6 overflow-y-auto ">
-            {/* Selected Node Details as a tree branch */}
             {selectedNode && (
               <div className="ml-6 border-l-2 border-[#CE8F6F] pl-4">
                 <div className="relative">
-                  {/* Horizontal branch connecting the trunk to the node */}
                   <span className="absolute -left-4 top-3 h-px w-4 bg-[#CE8F6F]" />
                   <h3 className="font-semibold text-lg text-[#CE8F6F]">
                     {trimFileName(selectedNode.name, selectedNode.path)}
@@ -717,7 +678,6 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
 
             {/* Connected Files Section */}
             <div className="overflow-auto">
-              {/* Header for Connected Files */}
               <div className="ml-6 border-l-2 border-[#CE8F6F] pl-4">
                 <div className="text-center w-48 p-4 mb-4 h-14 bg-[#CE8F6F] rounded-lg text-black font-bold">
                   Connected Files
@@ -736,7 +696,6 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                           : "text-gray-200"
                       }`}
                     >
-                      {/* Branch line */}
                       <span className="absolute -left-4 top-2 h-px w-4 bg-[#CE8F6F]" />
                       <div className="text-sm">
                         {trimFileName(node.name, node.path)}
@@ -783,7 +742,6 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                   key={file.id}
                   className="relative cursor-pointer transition-colors duration-200"
                   onClick={() => setSelectedFile(file)}
-                  // Changed clip-path to reverse the tilt direction:
                   style={{
                     clipPath:
                       "polygon(0 0, calc(100% - 10px) 0, 100% 100%, 10px 100%)",
@@ -840,43 +798,15 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
           </div>
 
           {activeTab === "code" ? (
-            // Code View
+            // Code View using react-code-blocks
             selectedFile ? (
               selectedFile.content ? (
-                <div className="bg-[#2a2a2a] rounded">
-                  <Editor
-                    value={selectedFile.content}
-                    onValueChange={() => {}}
-                    highlight={(code) => (
-                      <PrismHighlight
-                        code={code}
-                        language="typescript"
-                        theme={themes.dracula}
-                      >
-                        {({ tokens, getLineProps, getTokenProps }) => (
-                          <div className="p-2">
-                            {tokens.map((line, i) => (
-                              <div key={i} {...getLineProps({ line, key: i })}>
-                                {line.map((token, key) => (
-                                  <span
-                                    key={key}
-                                    {...getTokenProps({ token, key })}
-                                  />
-                                ))}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </PrismHighlight>
-                    )}
-                    padding={16}
-                    style={{
-                      fontFamily: '"Fira Code", monospace',
-                      fontSize: 14,
-                      backgroundColor: "#2a2a2a",
-                      color: "#E0E0E0",
-                    }}
-                    readOnly
+                <div className="w-fit bg-[#2a2a2a] rounded">
+                  <CopyBlock
+                    text={selectedFile.content}
+                    language="typescript"
+                    showLineNumbers={true}
+                    theme={dracula}
                   />
                 </div>
               ) : (
@@ -894,7 +824,6 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
             <div className="space-y-4">
               {selectedFile && analysis ? (
                 (() => {
-                  // Improved matching: first try to match using the full path, then fallback to matching by file name.
                   const fileAnalysis =
                     analysis.find((report) =>
                       selectedFile.path
@@ -1076,7 +1005,6 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                           </p>
                                           <ul className="list-disc ml-4 space-y-1">
                                             {vari.usedInFiles.map((file, i) => {
-                                              // Extract only the file name (i.e. the part after the last '/')
                                               const trimmedFile =
                                                 file.split("/").pop() || file;
                                               return (
