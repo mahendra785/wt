@@ -31,14 +31,6 @@ export interface GraphData {
   links: Link[];
 }
 
-interface AnalysisData {
-  Summary: string;
-  Redundancy: { Description: string; Files: string[] }[];
-  LogicalErrors: { Description: string; File: string }[];
-  SyntaxErrors: string[];
-  Improvements: { Description: string; Suggestion: string }[];
-}
-
 interface ObsidianGraphProps {
   // GitHub URL as a prop (e.g., "username/repo")
   githubUrl: string;
@@ -116,11 +108,6 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Analysis summary state (from your original endpoint)
-  const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState<boolean>(true);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   // JS Analysis report (functions/variables tracking) loaded from public/data.json
   const [analysis, setAnalysis] = useState<JSAnalysisReport[] | null>(null);
@@ -252,15 +239,8 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
         if (!response.ok) {
           throw new Error("Failed to fetch analysis data");
         }
-        const data = await response.json();
-        setAnalysisData(data);
-        setAnalysisLoading(false);
       } catch (err) {
         console.error("Failed to fetch analysis data:", err);
-        setAnalysisError(
-          err instanceof Error ? err.message : "An unknown error occurred"
-        );
-        setAnalysisLoading(false);
       }
     };
 
@@ -292,10 +272,30 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
         // jsonData is expected to have a top-level "data" property.
         // Transform the keys from snake_case to camelCase.
         const transformed: JSAnalysisReport[] = jsonData.data.map(
-          (report: any) => ({
+          (report: {
+            file: string;
+            functions?: {
+              name: string;
+              start_line?: number;
+              startLine?: number;
+              end_line?: number;
+              endLine?: number;
+              calls?: CallDetail[];
+            }[];
+            variables?: {
+              name: string;
+              defined_at_line?: number;
+              definedAtLine?: number;
+              transformations?: {
+                file: string;
+                line: number;
+              }[];
+              used_in_files?: string[];
+            }[];
+          }) => ({
             file: report.file,
             functions: report.functions
-              ? report.functions.map((func: any) => ({
+              ? report.functions.map((func) => ({
                   name: func.name,
                   startLine: func.start_line ?? func.startLine,
                   endLine: func.end_line ?? func.endLine,
@@ -303,11 +303,11 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                 }))
               : [],
             variables: report.variables
-              ? report.variables.map((vari: any) => ({
+              ? report.variables.map((vari) => ({
                   name: vari.name,
                   definedAtLine: vari.defined_at_line ?? vari.definedAtLine,
                   transformations: vari.transformations
-                    ? vari.transformations.map((trans: any) => ({
+                    ? vari.transformations.map((trans) => ({
                         file: trans.file,
                         line: trans.line,
                       }))
