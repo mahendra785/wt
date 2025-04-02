@@ -664,7 +664,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
       {/* Main Content: File System, Code/Analysis Panel & Graph Panel */}
       <div className="flex flex-1 flex-col md:flex-row h-screen overflow-none">
         {/* File System Panel */}
-        <aside className="w-full md:w-72 h-screen bg-[#1a1a1a] text-gray-200 flex flex-col px-2">
+        <aside className="w-full md:w-[335px] h-screen bg-[#1a1a1a] text-gray-200 flex flex-col px-2">
           <div className="flex flex-col w-fit text-left ">
             {graphData &&
               Array.from(
@@ -673,7 +673,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                 <button
                   key={category}
                   onClick={() => toggleCategoryFilter(category)}
-                  className={` flex justify-start items-center rounded text-lg font-['Space_Grotesk'] text-[#D97757] transition-colors duration-200 text-left`}
+                  className={` flex justify-start items-center rounded text-lg font-['Space_Grotesk'] text-[#CE8F6F] transition-colors duration-200 text-left`}
                 >
                   <img src="/file1.svg" className="w-10 h-10"></img>
                   <> {category.charAt(0).toUpperCase() + category.slice(1)}</>
@@ -686,7 +686,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
             {/* Title Bar with 'Import Docs' Button */}
             <div className="flex items-center justify-between bg-[#CE8F6F] px-3 py-2 rounded-md">
               <h1 className="text-xl font-bold text-black">Project Files</h1>
-              <button className="px-3 py-1 text-xs font-medium rounded border border-gray-600 text-black hover:bg-gray-800">
+              <button className="px-3 py-1 text-xs font-medium rounded border border-gray-600 text-black hover:bg-[#D97757]">
                 Import Docs
               </button>
             </div>
@@ -781,30 +781,40 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
               {openedFiles.map((file) => (
                 <div
                   key={file.id}
-                  className={`px-3 py-1 rounded cursor-pointer transition-colors duration-200 ${
-                    selectedFile?.id === file.id
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-700 text-gray-300"
-                  }`}
+                  className="relative cursor-pointer transition-colors duration-200"
                   onClick={() => setSelectedFile(file)}
+                  // Changed clip-path to reverse the tilt direction:
+                  style={{
+                    clipPath:
+                      "polygon(0 0, calc(100% - 10px) 0, 100% 100%, 10px 100%)",
+                  }}
                 >
-                  {trimFileName(file.name, file.path)}
-                  <span
-                    className="ml-1 text-xs hover:text-red-400"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenedFiles((prev) =>
-                        prev.filter((f) => f.id !== file.id)
-                      );
-                      if (selectedFile?.id === file.id) setSelectedFile(null);
-                    }}
+                  <div
+                    className={`px-3 py-1 rounded-t-md ${
+                      selectedFile?.id === file.id
+                        ? "bg-[#CE8F6F] text-white"
+                        : "bg-[#CE8F6F] hover:[#D97757]"
+                    }`}
                   >
-                    ×
-                  </span>
+                    {trimFileName(file.name, file.path)}
+                    <span
+                      className="ml-1 text-xs hover:text-orange-400"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenedFiles((prev) =>
+                          prev.filter((f) => f.id !== file.id)
+                        );
+                        if (selectedFile?.id === file.id) setSelectedFile(null);
+                      }}
+                    >
+                      ×
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
           )}
+
           {/* Tab Navigation */}
           <div className="flex mb-4 border-b border-gray-600 text-[#CE8F6F]">
             <button
@@ -819,7 +829,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
             </button>
             <button
               className={`px-4 py-2 font-medium rounded-t-md transition-colors duration-200 border-b-2 ${
-                activeTab === "code"
+                activeTab === "analysis"
                   ? "border-[#CE8F6F] text-[#CE8F6F]"
                   : "border-transparent text-gray-400 hover:text-[#CE8F6F]/80"
               }`}
@@ -901,19 +911,21 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                   }
                   return (
                     <>
-                      <h2 className="text-lg font-bold">
+                      <h2 className="text-lg font-bold text-[#CE8F6F]">
                         Analysis for{" "}
                         {trimFileName(selectedFile.name, selectedFile.path)}
                       </h2>
                       <div>
-                        <h3 className="font-semibold mb-1">Functions</h3>
+                        <h3 className="font-semibold mb-1 text-sm text-[#D97757]">
+                          Functions
+                        </h3>
                         {fileAnalysis.functions &&
                         fileAnalysis.functions.length > 0 ? (
                           <ul className="space-y-1">
                             {fileAnalysis.functions.map((func, idx) => (
                               <li
                                 key={idx}
-                                className="cursor-pointer hover:underline text-blue-400"
+                                className="cursor-pointer hover:underline text-[#CE8F6F] transition-colors duration-200"
                                 onClick={() =>
                                   setSelectedAnalysisItem({
                                     type: "function",
@@ -921,7 +933,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                   })
                                 }
                               >
-                                {func.name} (Lines: {func.startLine}-
+                                {func.name} (Lines: {func.startLine} -{" "}
                                 {func.endLine})
                               </li>
                             ))}
@@ -931,14 +943,16 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                         )}
                       </div>
                       <div>
-                        <h3 className="font-semibold mb-1">Variables</h3>
+                        <h3 className="font-semibold mb-1 text-sm text-[#D97757]">
+                          Variables
+                        </h3>
                         {fileAnalysis.variables &&
                         fileAnalysis.variables.length > 0 ? (
                           <ul className="space-y-1">
                             {fileAnalysis.variables.map((vari, idx) => (
                               <li
                                 key={idx}
-                                className="cursor-pointer hover:underline text-blue-400"
+                                className="cursor-pointer hover:underline text-[#CE8F6F] transition-colors duration-200"
                                 onClick={() =>
                                   setSelectedAnalysisItem({
                                     type: "variable",
@@ -956,8 +970,8 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                         )}
                       </div>
                       {selectedAnalysisItem && (
-                        <div className="mt-4 p-3 bg-gray-800 rounded">
-                          <h4 className="font-bold mb-2">
+                        <div className="mt-4 p-3 bg-gray-800 rounded shadow-md">
+                          <h4 className="font-bold mb-2 text-[#CE8F6F]">
                             {selectedAnalysisItem.type === "function"
                               ? "Function Details"
                               : "Variable Details"}
@@ -967,27 +981,29 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                 const func =
                                   selectedAnalysisItem.data as FunctionSymbol;
                                 return (
-                                  <div>
+                                  <div className="text-sm text-gray-300">
                                     <p>
-                                      <span className="font-semibold">
+                                      <span className="font-semibold text-[#D97757]">
                                         Name:
                                       </span>{" "}
                                       {func.name}
                                     </p>
                                     <p>
-                                      <span className="font-semibold">
+                                      <span className="font-semibold text-[#D97757]">
                                         Lines:
                                       </span>{" "}
                                       {func.startLine} - {func.endLine}
                                     </p>
                                     {func.calls && func.calls.length > 0 ? (
                                       <div className="mt-2">
-                                        <p className="font-semibold">Calls:</p>
-                                        <ul className="list-disc ml-4">
+                                        <p className="font-semibold text-[#D97757]">
+                                          Calls:
+                                        </p>
+                                        <ul className="list-disc ml-4 space-y-1">
                                           {func.calls.map((call, i) => (
                                             <li
                                               key={i}
-                                              className="cursor-pointer hover:underline text-blue-400"
+                                              className="cursor-pointer hover:underline text-[#CE8F6F] transition-colors duration-200"
                                               onClick={() =>
                                                 openFileReference(
                                                   fileAnalysis.file
@@ -1000,7 +1016,9 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                         </ul>
                                       </div>
                                     ) : (
-                                      <p>No calls found.</p>
+                                      <p className="text-gray-500">
+                                        No calls found.
+                                      </p>
                                     )}
                                   </div>
                                 );
@@ -1009,15 +1027,15 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                 const vari =
                                   selectedAnalysisItem.data as VariableSymbol;
                                 return (
-                                  <div>
+                                  <div className="text-sm text-gray-300">
                                     <p>
-                                      <span className="font-semibold">
+                                      <span className="font-semibold text-[#D97757]">
                                         Name:
                                       </span>{" "}
                                       {vari.name}
                                     </p>
                                     <p>
-                                      <span className="font-semibold">
+                                      <span className="font-semibold text-[#D97757]">
                                         Defined At:
                                       </span>{" "}
                                       {vari.definedAtLine}
@@ -1025,15 +1043,15 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                     {vari.transformations &&
                                       vari.transformations.length > 0 && (
                                         <div className="mt-2">
-                                          <p className="font-semibold">
+                                          <p className="font-semibold text-[#D97757]">
                                             Transformations:
                                           </p>
-                                          <ul className="list-disc ml-4">
+                                          <ul className="list-disc ml-4 space-y-1">
                                             {vari.transformations.map(
                                               (trans, i) => (
                                                 <li
                                                   key={i}
-                                                  className="cursor-pointer hover:underline text-blue-400"
+                                                  className="cursor-pointer hover:underline text-[#CE8F6F] transition-colors duration-200"
                                                   onClick={() =>
                                                     openFileReference(
                                                       trans.file
@@ -1053,10 +1071,10 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                     {vari.usedInFiles &&
                                       vari.usedInFiles.length > 0 && (
                                         <div className="mt-2">
-                                          <p className="font-semibold">
+                                          <p className="font-semibold text-[#D97757]">
                                             Used In:
                                           </p>
-                                          <ul className="list-disc ml-4">
+                                          <ul className="list-disc ml-4 space-y-1">
                                             {vari.usedInFiles.map((file, i) => {
                                               // Extract only the file name (i.e. the part after the last '/')
                                               const trimmedFile =
@@ -1064,7 +1082,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                               return (
                                                 <li
                                                   key={i}
-                                                  className="cursor-pointer hover:underline text-blue-400"
+                                                  className="cursor-pointer hover:underline text-[#CE8F6F] transition-colors duration-200"
                                                   onClick={() =>
                                                     openFileReference(file)
                                                   }
