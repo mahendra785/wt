@@ -5,9 +5,7 @@ import Landing from "./components/landing";
 import Graph from "./components/graph";
 
 const Home = () => {
-  const [githubUrl, setGithubUrl] = useState<string>(
-    "https://github.com/ACM-VIT/ExamCooker-2024"
-  );
+  const [githubUrl, setGithubUrl] = useState<string>("");
 
   return !githubUrl ? (
     <Landing githubUrl={githubUrl} setGithubUrl={setGithubUrl} />
