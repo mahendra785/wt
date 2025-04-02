@@ -192,7 +192,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
   useEffect(() => {
     const fetchGraphData = async () => {
       try {
-        const fullUrl = `https://github.com/${githubUrl}`;
+        const fullUrl = `${githubUrl}`;
         const response = await fetch(
           "https://23d3-128-185-112-57.ngrok-free.app/receive",
           {
