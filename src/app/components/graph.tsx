@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import { CopyBlock, dracula } from "react-code-blocks";
-import LoadingScreen from "./loader";
 
 // ------------------------------
 // Type Definitions
@@ -51,6 +50,11 @@ interface FunctionSymbol {
   startLine: number;
   endLine: number;
   calls: CallDetail[];
+  definedAtLine?: number;
+  usedInFiles?: string[];
+  transformations?: Transformation[];
+  parameters?: string[];
+  returnType?: string;
 }
 
 interface VariableSymbol {
@@ -58,12 +62,62 @@ interface VariableSymbol {
   definedAtLine: number;
   transformations: Transformation[];
   usedInFiles: string[];
+  type?: string;
+  initialValue?: string;
+  scope?: string;
+  dependencies?: string[];
+  isConstant?: boolean;
+  isGlobal?: boolean;
+  isMutable?: boolean;
 }
 
 export interface JSAnalysisReport {
   file: string; // This should be the full path or unique identifier for the file
-  functions: FunctionSymbol[] | null;
-  variables: VariableSymbol[] | null;
+  functions: FunctionSymbol[];
+  variables: VariableSymbol[];
+}
+
+// New interfaces for the analysis service
+interface AnalysisResponse {
+  Summary: string;
+  Redundancy: Array<{
+    Description: string;
+    Files: string[];
+  }>;
+  LogicalErrors: Array<{
+    Description: string;
+    File: string;
+  }>;
+  SyntaxErrors: Array<{
+    Description: string;
+    Files: string[];
+  }>;
+  SecurityFlaws: Array<{
+    Description: string;
+    Files: string[];
+  }>;
+  Improvements: Array<{
+    Description: string;
+    Suggestion: string;
+  }>;
+}
+
+interface FunctionAnalysisResponse {
+  Summary: string;
+  Logic: string;
+  Arguments: string;
+  Outputs: string;
+}
+
+interface FileSummaryResponse {
+  Purpose: string;
+  KeyComponents: Array<{
+    Name: string;
+    Description: string;
+  }>;
+  Dependencies: string[];
+  Complexity: string;
+  MainFunctionality: string;
 }
 
 // ------------------------------
@@ -78,6 +132,19 @@ const getNodeById = (data: Node[], node: number | Node): Node | undefined => {
   }
   return node;
 };
+
+// Helper to trim a file name based on its path
+const trimFileName = (name: string, path?: string): string => {
+  if (path) {
+    const trimmed = path.split("/").pop();
+    return trimmed ? trimmed : name;
+  }
+  return name;
+};
+
+// ------------------------------
+// Minimalistic UI Colors Function
+// ------------------------------
 
 // ------------------------------
 // ObsidianGraph Component
@@ -114,12 +181,31 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
   const [searchTerm, setSearchTerm] = useState<string>("");
 
   // New UI state for tab switching in the code panel
-  const [activeTab, setActiveTab] = useState<"code" | "analysis">("code");
+  const [activeTab, setActiveTab] = useState<"code" | "analysis" | "summary">(
+    "code"
+  );
   // State for the selected analysis item (function or variable)
   const [selectedAnalysisItem, setSelectedAnalysisItem] = useState<{
     type: "function" | "variable";
     data: FunctionSymbol | VariableSymbol;
   } | null>(null);
+
+  // New state variables for analysis service
+  const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // New state variables for file summary
+  const [fileSummary, setFileSummary] = useState<FileSummaryResponse | null>(
+    null
+  );
+  const [summaryLoading, setSummaryLoading] = useState<boolean>(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  // New state variables for analysis response and function analysis
+  const [analysisResponse, setAnalysisResponse] =
+    useState<AnalysisResponse | null>(null);
+  const [functionAnalysis, setFunctionAnalysis] =
+    useState<FunctionAnalysisResponse | null>(null);
 
   // ------------------------------
   // Helper: Open a File (adds to openedFiles and sets as selected)
@@ -133,26 +219,23 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
     });
     setSelectedFile(node);
     setActiveTab("code");
+    if (node.path) {
+      fetchFileSummary(node.path);
+    }
   };
 
   // Open a file reference by file name/path using graphData
   const openFileReference = (file: string) => {
     if (graphData) {
-      const fileToFind = file.toLowerCase().trim();
-      const found = graphData.nodes.find((n) => {
-        const nodePath = n.path ? n.path.toLowerCase() : "";
-        const nodeName = n.name.toLowerCase();
-        // Match if the full path matches, or if the path ends with the file name, or if the name itself matches
-        return (
-          nodePath === fileToFind ||
-          nodePath.endsWith(fileToFind) ||
-          nodeName === fileToFind
-        );
-      });
+      const found = graphData.nodes.find(
+        (n) =>
+          n.path === file ||
+          n.name === file ||
+          (n.path && n.path.includes(file))
+      );
       if (found) {
         openFile(found);
       } else {
-        console.error(`File "${file}" not found in project files.`);
         alert("File not found in project files.");
       }
     }
@@ -166,7 +249,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
       try {
         const fullUrl = `${githubUrl}`;
         const response = await fetch(
-          "https://b8a2-182-66-218-119.ngrok-free.app/receive",
+          "https://3cd3-128-185-112-57.ngrok-free.app/receive",
           {
             method: "POST",
             headers: {
@@ -219,14 +302,14 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
     const fetchJSAnalysis = async () => {
       try {
         const response = await fetch(
-          "https://b8a2-182-66-218-119.ngrok-free.app/analysis",
+          "https://3cd3-128-185-112-57.ngrok-free.app/analysis",
           {
             method: "POST",
             headers: {
               "Content-Type": "text/plain",
               Accept: "application/json",
             },
-            body: `repo_name=${githubUrl.split("/").pop()}`,
+            body: `repo_name=vitty`,
           }
         );
         if (!response.ok) {
@@ -256,19 +339,20 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
               used_in_files?: string[];
             }[];
           }) => ({
-            file: report.file,
+            file: report.file, // file is expected to be the full path or unique identifier
             functions: report.functions
               ? report.functions.map((func) => ({
                   name: func.name,
-                  startLine: func.start_line ?? func.startLine,
-                  endLine: func.end_line ?? func.endLine,
+                  startLine: func.start_line ?? func.startLine ?? 0,
+                  endLine: func.end_line ?? func.endLine ?? 0,
                   calls: func.calls || [],
                 }))
               : [],
             variables: report.variables
               ? report.variables.map((vari) => ({
                   name: vari.name,
-                  definedAtLine: vari.defined_at_line ?? vari.definedAtLine,
+                  definedAtLine:
+                    vari.defined_at_line ?? vari.definedAtLine ?? 0,
                   transformations: vari.transformations
                     ? vari.transformations.map((trans) => ({
                         file: trans.file,
@@ -283,11 +367,12 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
         setAnalysis(transformed);
       } catch (err) {
         console.error("Failed to fetch JS analysis report:", err);
+        // Optionally set an error state here
       }
     };
 
     fetchJSAnalysis();
-  }, [githubUrl]);
+  }, []);
 
   // ------------------------------
   // Filter Functions
@@ -602,11 +687,236 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
     }));
   };
 
+  // New function to fetch repository analysis
+  const fetchRepositoryAnalysis = async () => {
+    try {
+      setAnalysisLoading(true);
+      setAnalysisError(null);
+
+      const response = await fetch(
+        "https://a2f4-2401-4900-6290-1598-29f5-cc87-e1df-44dd.ngrok-free.app/analyze",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            repo_name: githubUrl.split("/").pop() || "",
+            repo_url: githubUrl,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch repository analysis");
+      }
+
+      const data = await response.json();
+      console.log("Repository Analysis:", data);
+      setAnalysisResponse(data);
+    } catch (err) {
+      console.error("Failed to fetch repository analysis:", err);
+      setAnalysisError(
+        err instanceof Error ? err.message : "An unknown error occurred"
+      );
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  // New function to analyze specific function
+  const analyzeFunction = async (functionName: string, fileName: string) => {
+    try {
+      setAnalysisLoading(true);
+      setAnalysisError(null);
+
+      const response = await fetch(
+        "https://a2f4-2401-4900-6290-1598-29f5-cc87-e1df-44dd.ngrok-free.app/analyze_function",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            repo_name: githubUrl.split("/").pop() || "",
+            function: functionName,
+            filename: fileName,
+            repo_url: githubUrl,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to analyze function");
+      }
+
+      const data = await response.json();
+      console.log("Function Analysis:", data);
+      setFunctionAnalysis(data);
+    } catch (err) {
+      console.error("Failed to analyze function:", err);
+      setAnalysisError(
+        err instanceof Error ? err.message : "An unknown error occurred"
+      );
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  // New function to generate repository documentation
+  const generateDocumentation = async () => {
+    try {
+      setAnalysisLoading(true);
+      setAnalysisError(null);
+
+      const response = await fetch(
+        "https://a2f4-2401-4900-6290-1598-29f5-cc87-e1df-44dd.ngrok-free.app/generate_repo_docs",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            repo_name: githubUrl.split("/").pop() || "",
+            repo_url: githubUrl,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to generate documentation");
+      }
+
+      const htmlContent = await response.text();
+      console.log("Documentation HTML:", htmlContent);
+
+      // Create a temporary iframe to handle the PDF generation
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      document.body.appendChild(iframe);
+
+      // Write the HTML content to the iframe
+      iframe.contentWindow?.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Repository Documentation</title>
+            <style>
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+              }
+              pre {
+                background-color: #f5f5f5;
+                padding: 15px;
+                border-radius: 5px;
+                overflow-x: auto;
+              }
+              code {
+                font-family: 'Fira Code', monospace;
+                font-size: 14px;
+              }
+              h1, h2, h3 {
+                color: #2c3e50;
+                margin-top: 30px;
+              }
+              a {
+                color: #3498db;
+                text-decoration: none;
+              }
+              a:hover {
+                text-decoration: underline;
+              }
+              @media print {
+                body {
+                  padding: 0;
+                }
+                pre {
+                  page-break-inside: avoid;
+                }
+                h1, h2, h3 {
+                  page-break-after: avoid;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            ${htmlContent}
+          </body>
+        </html>
+      `);
+
+      // Wait for the content to load
+      iframe.contentWindow?.document.close();
+
+      // Use the browser's print functionality to generate PDF
+      iframe.contentWindow?.print();
+
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 1000);
+    } catch (err) {
+      console.error("Failed to generate documentation:", err);
+      setAnalysisError(
+        err instanceof Error ? err.message : "An unknown error occurred"
+      );
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  // New function to fetch file summary
+  const fetchFileSummary = async (filePath: string) => {
+    try {
+      setSummaryLoading(true);
+      setSummaryError(null);
+
+      const response = await fetch(
+        "https://a2f4-2401-4900-6290-1598-29f5-cc87-e1df-44dd.ngrok-free.app/file_summary",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            repo_name: githubUrl.split("/").pop() || "",
+            file_path: filePath,
+            repo_url: githubUrl,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch file summary");
+      }
+
+      const data = await response.json();
+      console.log("File Summary:", data);
+      setFileSummary(data);
+    } catch (err) {
+      console.error("Failed to fetch file summary:", err);
+      setSummaryError(
+        err instanceof Error ? err.message : "An unknown error occurred"
+      );
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
   // ------------------------------
   // UI Rendering
   // ------------------------------
   if (loading) {
-    return <LoadingScreen />;
+    return (
+      <div className="flex items-center justify-center h-screen text-gray-300 font-sans">
+        Loading graph data...
+      </div>
+    );
   }
 
   if (error) {
@@ -616,14 +926,6 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
       </div>
     );
   }
-  const trimFileName = (name: string, path?: string): string => {
-    if (path) {
-      const trimmed = path.split("/").pop();
-      return trimmed ? trimmed : name;
-    }
-    return name;
-  };
-
   return (
     <div className="flex flex-col h-screen bg-[#222222] text-gray-300 font-sans overflow-none">
       {/* Main Content: File System, Code/Analysis Panel & Graph Panel */}
@@ -633,7 +935,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
           <div className="flex flex-col w-fit text-left ">
             {graphData &&
               Array.from(
-                new Set(graphData.nodes.map((node) => node.category))
+                new Set(graphData?.nodes.map((node) => node.category))
               ).map((category) => (
                 <button
                   key={category}
@@ -773,7 +1075,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
             </div>
           )}
 
-          {/* Tab Navigation */}
+          {/* Tab Navigation - UPDATED to include Summary tab */}
           <div className="flex mb-4 border-b border-gray-600 text-[#CE8F6F]">
             <button
               className={`px-4 py-2 font-medium rounded-t-md transition-colors duration-200 border-b-2 ${
@@ -787,6 +1089,16 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
             </button>
             <button
               className={`px-4 py-2 font-medium rounded-t-md transition-colors duration-200 border-b-2 ${
+                activeTab === "summary"
+                  ? "border-[#CE8F6F] text-[#CE8F6F]"
+                  : "border-transparent text-gray-400 hover:text-[#CE8F6F]/80"
+              }`}
+              onClick={() => setActiveTab("summary")}
+            >
+              Summary
+            </button>
+            <button
+              className={`px-4 py-2 font-medium rounded-t-md transition-colors duration-200 border-b-2 ${
                 activeTab === "analysis"
                   ? "border-[#CE8F6F] text-[#CE8F6F]"
                   : "border-transparent text-gray-400 hover:text-[#CE8F6F]/80"
@@ -795,8 +1107,15 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
             >
               Analysis
             </button>
+            <button
+              onClick={fetchRepositoryAnalysis}
+              className="px-3 py-1 rounded text-xs bg-[#CE8F6F] hover:bg-[#CE8F6F]/80 transition-colors duration-200"
+            >
+              Analyze Repository
+            </button>
           </div>
 
+          {/* Content Area - UPDATED to include Summary tab content */}
           {activeTab === "code" ? (
             // Code View using react-code-blocks
             selectedFile ? (
@@ -819,6 +1138,75 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                 Select a file to view its content
               </div>
             )
+          ) : activeTab === "summary" ? (
+            // Summary View - NEWLY ADDED
+            <div className="space-y-4">
+              {summaryLoading ? (
+                <div className="text-gray-400">Loading file summary...</div>
+              ) : summaryError ? (
+                <div className="text-red-400">Error: {summaryError}</div>
+              ) : fileSummary ? (
+                <div className="space-y-6">
+                  <div className="bg-[#3a3a3a] p-4 rounded-lg">
+                    <h3 className="text-lg font-bold mb-2 text-[#CE8F6F]">
+                      Purpose
+                    </h3>
+                    <p className="text-gray-300">{fileSummary.Purpose}</p>
+                  </div>
+
+                  <div className="bg-[#3a3a3a] p-4 rounded-lg">
+                    <h3 className="text-lg font-bold mb-2 text-[#CE8F6F]">
+                      Key Components
+                    </h3>
+                    <ul className="space-y-2">
+                      {fileSummary.KeyComponents.map((component, idx) => (
+                        <li key={idx} className="bg-gray-800 p-3 rounded">
+                          <h4 className="font-semibold text-gray-300">
+                            {component.Name}
+                          </h4>
+                          <p className="text-gray-400 mt-1">
+                            {component.Description}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="bg-[#3a3a3a] p-4 rounded-lg">
+                    <h3 className="text-lg font-bold mb-2 text-[#CE8F6F]">
+                      Dependencies
+                    </h3>
+                    <ul className="space-y-1">
+                      {fileSummary.Dependencies.map((dep, idx) => (
+                        <li key={idx} className="text-gray-300">
+                          {dep}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="bg-[#3a3a3a] p-4 rounded-lg">
+                    <h3 className="text-lg font-bold mb-2 text-[#CE8F6F]">
+                      Complexity
+                    </h3>
+                    <p className="text-gray-300">{fileSummary.Complexity}</p>
+                  </div>
+
+                  <div className="bg-[#3a3a3a] p-4 rounded-lg">
+                    <h3 className="text-lg font-bold mb-2 text-[#CE8F6F]">
+                      Main Functionality
+                    </h3>
+                    <p className="text-gray-300">
+                      {fileSummary.MainFunctionality}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-gray-400">
+                  Select a file to view its summary
+                </div>
+              )}
+            </div>
           ) : (
             // Analysis View
             <div className="space-y-4">
@@ -917,12 +1305,15 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                       </span>{" "}
                                       {func.name}
                                     </p>
-                                    <p>
-                                      <span className="font-semibold text-[#D97757]">
-                                        Lines:
-                                      </span>{" "}
-                                      {func.startLine} - {func.endLine}
-                                    </p>
+                                    {typeof func.startLine !== "undefined" &&
+                                      typeof func.endLine !== "undefined" && (
+                                        <p>
+                                          <span className="font-semibold text-[#D97757]">
+                                            Lines:
+                                          </span>{" "}
+                                          {func.startLine} - {func.endLine}
+                                        </p>
+                                      )}
                                     {func.calls && func.calls.length > 0 ? (
                                       <div className="mt-2">
                                         <p className="font-semibold text-[#D97757]">
@@ -967,7 +1358,9 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                       <span className="font-semibold text-[#D97757]">
                                         Defined At:
                                       </span>{" "}
-                                      {vari.definedAtLine}
+                                      {typeof vari.definedAtLine !== "undefined"
+                                        ? vari.definedAtLine
+                                        : "N/A"}
                                     </p>
                                     {vari.transformations &&
                                       vari.transformations.length > 0 && (
