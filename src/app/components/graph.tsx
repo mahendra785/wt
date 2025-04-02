@@ -61,8 +61,8 @@ interface VariableSymbol {
   usedInFiles: string[];
 }
 
-interface JSAnalysisReport {
-  file: string;
+export interface JSAnalysisReport {
+  file: string; // This should be the full path or unique identifier for the file
   functions: FunctionSymbol[] | null;
   variables: VariableSymbol[] | null;
 }
@@ -78,6 +78,15 @@ const getNodeById = (data: Node[], node: number | Node): Node | undefined => {
     return data.find((n) => n.id === node);
   }
   return node;
+};
+
+// Helper to trim a file name based on its path
+const trimFileName = (name: string, path?: string): string => {
+  if (path) {
+    const trimmed = path.split("/").pop();
+    return trimmed ? trimmed : name;
+  }
+  return name;
 };
 
 // ------------------------------
@@ -109,7 +118,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // JS Analysis report (functions/variables tracking) loaded from public/data.json
+  // JS Analysis report loaded from API
   const [analysis, setAnalysis] = useState<JSAnalysisReport[] | null>(null);
 
   // UI states for selection and filtering
@@ -159,15 +168,21 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
   // Open a file reference by file name/path using graphData
   const openFileReference = (file: string) => {
     if (graphData) {
-      const found = graphData.nodes.find(
-        (n) =>
-          n.path === file ||
-          n.name === file ||
-          (n.path && n.path.includes(file))
-      );
+      const fileToFind = file.toLowerCase().trim();
+      const found = graphData.nodes.find((n) => {
+        const nodePath = n.path ? n.path.toLowerCase() : "";
+        const nodeName = n.name.toLowerCase();
+        // Match if the full path matches, or if the path ends with the file name, or if the name itself matches
+        return (
+          nodePath === fileToFind ||
+          nodePath.endsWith(fileToFind) ||
+          nodeName === fileToFind
+        );
+      });
       if (found) {
         openFile(found);
       } else {
+        console.error(`File "${file}" not found in project files.`);
         alert("File not found in project files.");
       }
     }
@@ -181,7 +196,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
       try {
         const fullUrl = `${githubUrl}`;
         const response = await fetch(
-          "https://23d3-128-185-112-57.ngrok-free.app/receive",
+          "https://4196-128-185-112-57.ngrok-free.app/receive",
           {
             method: "POST",
             headers: {
@@ -228,34 +243,13 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
   }, [githubUrl]);
 
   // ------------------------------
-  // Fetch Analysis Data (summary)
-  // ------------------------------
-  useEffect(() => {
-    const fetchAnalysisData = async () => {
-      try {
-        const response = await fetch(
-          "https://757c-128-185-112-57.ngrok-free.app/analyze/test2"
-        );
-        if (!response.ok) {
-          throw new Error("Failed to fetch analysis data");
-        }
-      } catch (err) {
-        console.error("Failed to fetch analysis data:", err);
-      }
-    };
-
-    fetchAnalysisData();
-  }, []);
-
-  // ------------------------------
-  // Fetch JS Analysis Report from local data.json
+  // Fetch JS Analysis Report from API
   // ------------------------------
   useEffect(() => {
     const fetchJSAnalysis = async () => {
       try {
-        // Call your Next.js API route (e.g., /api/analysis)
         const response = await fetch(
-          "https://23d3-128-185-112-57.ngrok-free.app/analysis",
+          "https://4196-128-185-112-57.ngrok-free.app/analysis",
           {
             method: "POST",
             headers: {
@@ -269,8 +263,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
           throw new Error("Failed to fetch JS analysis report from API");
         }
         const jsonData = await response.json();
-        // jsonData is expected to have a top-level "data" property.
-        // Transform the keys from snake_case to camelCase.
+        // Transform keys from snake_case to camelCase for analysis report
         const transformed: JSAnalysisReport[] = jsonData.data.map(
           (report: {
             file: string;
@@ -293,7 +286,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
               used_in_files?: string[];
             }[];
           }) => ({
-            file: report.file,
+            file: report.file, // file is expected to be the full path or unique identifier
             functions: report.functions
               ? report.functions.map((func) => ({
                   name: func.name,
@@ -488,7 +481,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
         event.stopPropagation();
         const clickedNode = graphData.nodes.find((n) => n.id === d.id) || null;
         setSelectedNode(clickedNode === selectedNode ? null : clickedNode);
-        // If a node is clicked from the graph, also open it in tabs.
+        // Open file in tabs when clicked
         if (clickedNode) {
           openFile(clickedNode);
         }
@@ -540,18 +533,12 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
       .attr("stroke", (d) => (selectedNode?.id === d.id ? "#fff" : "#222222"))
       .attr("stroke-width", (d) => (selectedNode?.id === d.id ? 2 : 1.5));
 
-    // Append labels to nodes
+    // Append labels to nodes (trim the label to show only the file name if possible)
     node
       .append("text")
       .attr("dx", 10)
       .attr("dy", ".35em")
-      .text((d) => {
-        if (d.path && d.path !== "/") {
-          const parts = `${d.path}${d.name}`.split("/");
-          return parts[parts.length - 1];
-        }
-        return d.name;
-      })
+      .text((d) => trimFileName(d.name, d.path))
       .attr("fill", "#C9D1D9")
       .style("font-size", "10px")
       .style("pointer-events", "none")
@@ -567,7 +554,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
           const sourceY = sourceNode?.y ?? 0;
           const targetX = targetNode?.x ?? 0;
           const targetY = targetNode?.y ?? 0;
-          // Check for multiple links and compute a curved (quadratic Bézier) path if needed
+          // Check for multiple links to compute a curved (quadratic Bézier) path if needed
           const multipleLinks = filteredLinks.filter((l) => {
             const s1 = getNodeId(l.source);
             const t1 = getNodeId(l.target);
@@ -585,7 +572,6 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
             return `M${sourceX},${sourceY} L${targetX},${targetY}`;
           }
         })
-        // Conditional styling for links (highlight links connected to the selected node)
         .attr("stroke", (l) => {
           if (selectedNode) {
             const sourceId = getNodeId(l.source);
@@ -665,13 +651,21 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
       </div>
     );
   }
+  const trimFileName = (name: string, path?: string): string => {
+    if (path) {
+      const trimmed = path.split("/").pop();
+      return trimmed ? trimmed : name;
+    }
+    return name;
+  };
 
   return (
-    <div className="flex flex-col h-screen bg-[#222222] text-gray-300 font-sans">
-      {/* Header */}
-      <header className="p-4 bg-[#1a1a1a] w-full">
-        <div className="flex flex-col md:flex-row justify-between items-center mt-2 gap-3">
-          <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col h-screen bg-[#222222] text-gray-300 font-sans overflow-none">
+      {/* Main Content: File System, Code/Analysis Panel & Graph Panel */}
+      <div className="flex flex-1 flex-col md:flex-row h-screen overflow-none">
+        {/* File System Panel */}
+        <aside className="w-full md:w-72 h-screen bg-[#1a1a1a] text-gray-200 flex flex-col px-2">
+          <div className="flex flex-col w-fit text-left ">
             {graphData &&
               Array.from(
                 new Set(graphData.nodes.map((node) => node.category))
@@ -679,77 +673,108 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                 <button
                   key={category}
                   onClick={() => toggleCategoryFilter(category)}
-                  className={`px-3 py-1 rounded text-xs ${getCategoryColor(
-                    category,
-                    categoryFilters[category]
-                  )} transition-colors duration-200`}
+                  className={` flex justify-start items-center rounded text-lg font-['Space_Grotesk'] text-[#D97757] transition-colors duration-200 text-left`}
                 >
-                  {category.charAt(0).toUpperCase() + category.slice(1)}
+                  <img src="/file1.svg" className="w-10 h-10"></img>
+                  <> {category.charAt(0).toUpperCase() + category.slice(1)}</>
                 </button>
               ))}
           </div>
-          <div className="relative w-full md:w-64">
-            <input
-              type="text"
-              placeholder="Search files..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="px-4 py-2 bg-[#2a2a2a] text-gray-300 rounded border border-gray-600 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm("")}
-                className="absolute right-2 top-2 text-gray-400 hover:text-gray-200 transition-colors duration-200"
-              >
-                ✕
+          {/* Header Section */}
+          {/* File System Header Section */}
+          <div className="relative pb-4 ">
+            {/* Title Bar with 'Import Docs' Button */}
+            <div className="flex items-center justify-between bg-[#CE8F6F] px-3 py-2 rounded-md">
+              <h1 className="text-xl font-bold text-black">Project Files</h1>
+              <button className="px-3 py-1 text-xs font-medium rounded border border-gray-600 text-black hover:bg-gray-800">
+                Import Docs
               </button>
-            )}
+            </div>
           </div>
-        </div>
-      </header>
 
-      {/* Main Content: File System, Code/Analysis Panel & Graph Panel */}
-      <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
-        {/* File System Panel */}
-        <div className="md:w-1/4 w-full bg-[#2a2a2a] border-r border-gray-600 overflow-y-auto p-4">
-          <h2 className="font-semibold mb-4 text-gray-200">Project Files</h2>
-          {selectedNode ? (
-            <>
-              <div className="mb-4 p-3 bg-[#3a3a3a] rounded">
-                <h3 className="font-medium text-gray-100">
-                  {selectedNode.name}
-                </h3>
-                <div className="text-xs text-gray-400 mt-1">
-                  {selectedNode.category}
+          {/* If a node is selected, show the tree branch leading to it */}
+          <div className="space-y-6 overflow-y-auto ">
+            {/* Selected Node Details as a tree branch */}
+            {selectedNode && (
+              <div className="ml-6 border-l-2 border-[#CE8F6F] pl-4">
+                <div className="relative">
+                  {/* Horizontal branch connecting the trunk to the node */}
+                  <span className="absolute -left-4 top-3 h-px w-4 bg-[#CE8F6F]" />
+                  <h3 className="font-semibold text-lg text-[#CE8F6F]">
+                    {trimFileName(selectedNode.name, selectedNode.path)}
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {selectedNode.category}
+                  </p>
+                  {selectedNode.path && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Path: {selectedNode.path}
+                    </p>
+                  )}
                 </div>
               </div>
-              <h3 className="font-medium mb-2 text-gray-200">
-                Connected Files:
-              </h3>
-              <div className="space-y-2">
-                {connectedNodes.map((node) => (
-                  <div
-                    key={node.id}
-                    onClick={() => openFile(node)}
-                    className={`p-2 rounded cursor-pointer hover:bg-[#3a3a3a] transition-colors duration-200 ${
-                      selectedFile?.id === node.id ? "bg-[#3a3a3a]" : ""
-                    }`}
-                  >
-                    <div className="font-medium text-gray-100">{node.name}</div>
-                    <div className="text-xs text-gray-400">{node.category}</div>
-                  </div>
-                ))}
+            )}
+
+            {/* Connected Files Section */}
+            <div className="overflow-auto">
+              {/* Header for Connected Files */}
+              <div className="ml-6 border-l-2 border-[#CE8F6F] pl-4">
+                <div className="text-center w-48 p-4 mb-4 h-14 bg-[#CE8F6F] rounded-lg text-black font-bold">
+                  Connected Files
+                </div>
               </div>
-            </>
-          ) : (
-            <div className="text-gray-400 italic">
-              Click on a node to see connected files
+
+              {connectedNodes.length > 0 ? (
+                <ul className="ml-6 border-l-2 border-[#CE8F6F] pl-4">
+                  {connectedNodes.map((node) => (
+                    <li
+                      key={node.id}
+                      onClick={() => openFile(node)}
+                      className={`relative pl-4 mb-3 cursor-pointer transition-colors duration-200 hover:text-[#CE8F6F]/80 ${
+                        selectedFile?.id === node.id
+                          ? "font-bold text-[#CE8F6F]"
+                          : "text-gray-200"
+                      }`}
+                    >
+                      {/* Branch line */}
+                      <span className="absolute -left-4 top-2 h-px w-4 bg-[#CE8F6F]" />
+                      <div className="text-sm">
+                        {trimFileName(node.name, node.path)}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {node.category}
+                      </div>
+                      {node.path && (
+                        <div className="text-xs text-gray-500">
+                          Path: {node.path}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="italic text-gray-500 ml-6">
+                  Click on a node to see connected files
+                </p>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+
+          {/* Bottom: Project Summary */}
+          <div className="mt-auto pt-4 border-t border-gray-700">
+            <h3 className="text-sm font-semibold text-[#F5B04C] mb-2">
+              Project Summary
+            </h3>
+            <p className="text-xs text-gray-400 leading-snug">
+              Brief summary of the project. Lorem ipsum dolor sit amet,
+              consectetur adipiscing elit. Nulla facilisi. Integer auctor, lacus
+              et vestibulum fermentum, libero nunc faucibus.
+            </p>
+          </div>
+        </aside>
 
         {/* Code / Analysis Panel */}
-        <div className="md:w-1/3 w-full bg-[#2a2a2a] border-r border-gray-600 overflow-y-auto p-4">
+        <div className="md:w-1/3 w-full bg-[#2a2a2a] border-r border-gray-600 overflow-y-auto p-4 h-screen">
           {/* Opened Files Tabs */}
           {openedFiles.length > 0 && (
             <div className="flex space-x-2 mb-2 border-b border-gray-600 pb-2">
@@ -763,7 +788,7 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                   }`}
                   onClick={() => setSelectedFile(file)}
                 >
-                  {file.name}
+                  {trimFileName(file.name, file.path)}
                   <span
                     className="ml-1 text-xs hover:text-red-400"
                     onClick={(e) => {
@@ -781,28 +806,29 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
             </div>
           )}
           {/* Tab Navigation */}
-          <div className="flex space-x-4 mb-4 border-b border-gray-600 pb-2">
+          <div className="flex mb-4 border-b border-gray-600 text-[#CE8F6F]">
             <button
-              className={`px-3 py-1 rounded ${
+              className={`px-4 py-2 font-medium rounded-t-md transition-colors duration-200 border-b-2 ${
                 activeTab === "code"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-700 text-gray-300"
-              } transition-colors duration-200`}
+                  ? "border-[#CE8F6F] text-[#CE8F6F]"
+                  : "border-transparent text-gray-400 hover:text-[#CE8F6F]/80"
+              }`}
               onClick={() => setActiveTab("code")}
             >
               Code
             </button>
             <button
-              className={`px-3 py-1 rounded ${
-                activeTab === "analysis"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-700 text-gray-300"
-              } transition-colors duration-200`}
+              className={`px-4 py-2 font-medium rounded-t-md transition-colors duration-200 border-b-2 ${
+                activeTab === "code"
+                  ? "border-[#CE8F6F] text-[#CE8F6F]"
+                  : "border-transparent text-gray-400 hover:text-[#CE8F6F]/80"
+              }`}
               onClick={() => setActiveTab("analysis")}
             >
               Analysis
             </button>
           </div>
+
           {activeTab === "code" ? (
             // Code View
             selectedFile ? (
@@ -858,12 +884,14 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
             <div className="space-y-4">
               {selectedFile && analysis ? (
                 (() => {
-                  // Find the analysis report corresponding to the selected file.
-                  const fileAnalysis = analysis.find(
-                    (report) =>
-                      selectedFile.path === report.file ||
-                      selectedFile.name === report.file
-                  );
+                  // Improved matching: first try to match using the full path, then fallback to matching by file name.
+                  const fileAnalysis =
+                    analysis.find((report) =>
+                      selectedFile.path
+                        ? report.file === selectedFile.path ||
+                          report.file.endsWith(selectedFile.name)
+                        : report.file === selectedFile.name
+                    ) || null;
                   if (!fileAnalysis) {
                     return (
                       <p className="text-gray-500">
@@ -874,7 +902,8 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                   return (
                     <>
                       <h2 className="text-lg font-bold">
-                        Analysis for {selectedFile.name}
+                        Analysis for{" "}
+                        {trimFileName(selectedFile.name, selectedFile.path)}
                       </h2>
                       <div>
                         <h3 className="font-semibold mb-1">Functions</h3>
@@ -1011,8 +1040,10 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                                     )
                                                   }
                                                 >
-                                                  {trans.file} at line{" "}
-                                                  {trans.line}
+                                                  {trans.file
+                                                    .split("/")
+                                                    .pop() || trans.file}{" "}
+                                                  at line {trans.line}
                                                 </li>
                                               )
                                             )}
@@ -1026,17 +1057,22 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
                                             Used In:
                                           </p>
                                           <ul className="list-disc ml-4">
-                                            {vari.usedInFiles.map((file, i) => (
-                                              <li
-                                                key={i}
-                                                className="cursor-pointer hover:underline text-blue-400"
-                                                onClick={() =>
-                                                  openFileReference(file)
-                                                }
-                                              >
-                                                {file}
-                                              </li>
-                                            ))}
+                                            {vari.usedInFiles.map((file, i) => {
+                                              // Extract only the file name (i.e. the part after the last '/')
+                                              const trimmedFile =
+                                                file.split("/").pop() || file;
+                                              return (
+                                                <li
+                                                  key={i}
+                                                  className="cursor-pointer hover:underline text-blue-400"
+                                                  onClick={() =>
+                                                    openFileReference(file)
+                                                  }
+                                                >
+                                                  {trimmedFile}
+                                                </li>
+                                              );
+                                            })}
                                           </ul>
                                         </div>
                                       )}
@@ -1058,12 +1094,27 @@ const ObsidianGraph = ({ githubUrl }: ObsidianGraphProps) => {
         </div>
 
         {/* Graph Visualization Panel */}
-        <div className="flex-1 bg-[#222222] overflow-hidden h-[300px] md:h-auto">
+        <div className="flex-1 bg-[#222222] overflow-none h-screen">
+          <div className="absolute w-full md:w-64">
+            <input
+              type="text"
+              placeholder="Search files..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="px-4 py-2 bg-[#2a2a2a] text-gray-300 rounded border border-gray-600 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2 top-2 text-gray-400 hover:text-gray-200 transition-colors duration-200"
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <svg ref={svgRef} className="w-full h-full"></svg>
         </div>
       </div>
-
-      {/* Analysis Summary Panel (bottom) */}
     </div>
   );
 };

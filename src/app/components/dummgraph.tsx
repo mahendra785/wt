@@ -20,25 +20,57 @@ const DummyGraph = () => {
   useEffect(() => {
     if (!svgRef.current) return;
 
-    const nodes: Node[] = Array.from({ length: 50 }, (_, i) => ({
-      id: i,
-      name: `Node ${i + 1}`,
-      x: Math.random() * 800,
-      y: Math.random() * 600,
-      category: "default",
-    }));
+    const width = 1000;
+    const height = 700;
 
+    // Helper function to generate a random point inside an ellipse
+    function randomPointInEllipse(
+      cx: number,
+      cy: number,
+      rx: number,
+      ry: number
+    ) {
+      const angle = Math.random() * 2 * Math.PI;
+      const r = Math.sqrt(Math.random());
+      const x = cx + r * rx * Math.cos(angle);
+      const y = cy + r * ry * Math.sin(angle);
+      return { x, y };
+    }
+
+    // Create 50 nodes with positions arranged like a brain:
+    // - First 20 nodes in the left lobe (ellipse centered at width/3, height/2)
+    // - Next 20 nodes in the right lobe (ellipse centered at 2*width/3, height/2)
+    // - Last 10 nodes in the central region (ellipse centered at width/2, height/2)
+    const nodes: Node[] = Array.from({ length: 50 }, (_, i) => {
+      let pos;
+      if (i < 20) {
+        // Left lobe
+        pos = randomPointInEllipse(width / 3, height / 2, 150, 120);
+      } else if (i < 40) {
+        // Right lobe
+        pos = randomPointInEllipse((2 * width) / 3, height / 2, 150, 120);
+      } else {
+        // Central connection
+        pos = randomPointInEllipse(width / 2, height / 2, 100, 80);
+      }
+      return {
+        id: i,
+        name: `Node ${i + 1}`,
+        category: "default",
+        x: pos.x,
+        y: pos.y,
+      };
+    });
+
+    // Generate random links between nodes.
+    // These are still random and may connect nodes from different lobes.
     const links: Link[] = Array.from({ length: 60 }, () => ({
-      source: Math.floor(Math.random() * 30),
-      target: Math.floor(Math.random() * 30),
+      source: Math.floor(Math.random() * 50),
+      target: Math.floor(Math.random() * 50),
     }));
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
-
-    const width = 1000;
-    const height = 700;
-
     svg.attr("width", width).attr("height", height);
 
     const simulation = d3
@@ -102,8 +134,8 @@ const DummyGraph = () => {
       d: Node
     ) {
       if (!event.active) simulation.alphaTarget(0.3).restart();
-      d.fx = d.x ?? null;
-      d.fy = d.y ?? null;
+      d.fx = d.x;
+      d.fy = d.y;
     }
 
     function dragged(
